@@ -1,0 +1,14 @@
+# Rust build artifacts (2GB+, rebuilt by cargo/nix)
+/target/
+# Nix build symlinks
+/result
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
+# Local index databases (per-project data, not code)
+*.db
+*.db-wal
+*.db-shm
+*.db-journal

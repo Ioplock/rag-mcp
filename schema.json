@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "rag.json — rag-mcp collection config",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string", "default": "docs" },
+    "description": { "type": "string", "default": "" },
+    "docs": {
+      "type": "array", "items": { "type": "string" },
+      "default": ["materials"],
+      "description": "Directories to scan, relative to the config file"
+    },
+    "include": {
+      "type": "array", "items": { "type": "string" },
+      "default": ["**/*.txt", "**/*.md", "**/*.pdf"]
+    },
+    "exclude": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "db": { "type": "string", "default": ".rag/index.db" },
+    "chunk_chars": { "type": "integer", "minimum": 100, "default": 1000 },
+    "overlap_chars": { "type": "integer", "minimum": 0, "default": 180 },
+    "ocr": {
+      "type": "boolean", "default": false,
+      "description": "Off: skip PDFs without a digital text layer. On: OCR them with tesseract (needs tesseract + rus/eng traineddata on PATH)"
+    },
+    "ocr_langs": { "type": "string", "default": "rus+eng" },
+    "ocr_min_chars": {
+      "type": "integer", "default": 30,
+      "description": "Chars per page below which pdftotext output counts as 'no text layer'"
+    },
+    "model_dir": { "type": "string", "default": "~/.cache/rag-mcp/model" }
+  },
+  "additionalProperties": false
+}
