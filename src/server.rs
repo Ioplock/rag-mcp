@@ -181,6 +181,9 @@ impl Rag {
 impl ServerHandler for Rag {
     fn get_info(&self) -> rmcp::model::ServerInfo {
         let mut info = rmcp::model::ServerInfo::default();
+        // Without this flag spec-compliant clients never call tools/list:
+        // the server looks "connected" but exposes zero tools.
+        info.capabilities.tools = Some(rmcp::model::ToolsCapability { list_changed: None });
         info.instructions = Some(self.collection_line("Start with `search`, then `read_document` for full context."));
         info
     }
