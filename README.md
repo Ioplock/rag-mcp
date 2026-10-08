@@ -38,7 +38,8 @@ Supported formats:
 | `list_documents` | — | All indexed documents with sizes |
 
 Server `instructions` (from `rag.json` `name`/`description`) tell the model what
-the collection contains.
+the collection contains. Tool descriptions in `tools/list` are generated from
+the same fields, so every collection advertises itself correctly.
 
 ## Use in your project (flake input)
 

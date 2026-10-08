@@ -1,7 +1,12 @@
 //! MCP server (stdio) exposing the transcript RAG as three tools.
 
 use rmcp::handler::server::router::tool::ToolRouter;
-use rmcp::{tool, tool_handler, tool_router, ServerHandler};
+use rmcp::handler::server::tool::ToolCallContext;
+use rmcp::model::{
+    CallToolRequestParam, CallToolResult, ListToolsResult, PaginatedRequestParam, Tool,
+};
+use rmcp::service::RequestContext;
+use rmcp::{tool, tool_router, ErrorData, RoleServer, ServerHandler};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -99,7 +104,7 @@ pub struct DocInfo {
 impl Rag {
     #[tool(
         name = "search",
-        description = "Hybrid full-text + semantic search over Android lecture transcripts (Kotlin, Clean Architecture, MVVM/MVP/MVI, DI, testing). Returns the most relevant passages with document names. Use this first for any question about the lecture content."
+        description = "Hybrid full-text + semantic search over the collection. Returns the most relevant passages with document names."
     )]
     async fn search(&self, p: rmcp::handler::server::wrapper::Parameters<SearchArgs>) -> Result<String, String> {
         let top_k = p.0.top_k.clamp(1, 50);
@@ -121,7 +126,7 @@ impl Rag {
 
     #[tool(
         name = "read_document",
-        description = "Read a full transcript (or a slice of it) verbatim by exact document name from list_documents. Use after search to get complete context."
+        description = "Read a full document (or a slice of it) verbatim by name from list_documents. Use after search to get complete context."
     )]
     async fn read_document(&self, p: rmcp::handler::server::wrapper::Parameters<ReadArgs>) -> Result<String, String> {
         let name = p.0.name.trim().to_string();
@@ -156,7 +161,7 @@ impl Rag {
 
     #[tool(
         name = "list_documents",
-        description = "List all lecture transcripts and the Kotlin cheatsheet available in the RAG index with sizes. Use to discover coverage before searching."
+        description = "List all documents available in the RAG index with sizes. Use to discover coverage before searching."
     )]
     async fn list_documents(&self) -> Result<String, String> {
         let conn = self.open_db().map_err(|e| e.to_string())?;
@@ -169,14 +174,73 @@ impl Rag {
     }
 }
 
-#[tool_handler]
+/// Manual `ServerHandler` impl (instead of `#[tool_handler]`):
+/// tool *descriptions* are built at runtime from `rag.json`, so every
+/// collection advertises what it actually contains. Dispatch still goes
+/// through the macro-generated `ToolRouter`.
 impl ServerHandler for Rag {
     fn get_info(&self) -> rmcp::model::ServerInfo {
         let mut info = rmcp::model::ServerInfo::default();
-        info.instructions = Some(format!(
-            "Collection '{}' ({}). Start with `search`, then `read_document` for full context.",
-            self.state.cfg.name, self.state.cfg.description
-        ));
+        info.instructions = Some(self.collection_line("Start with `search`, then `read_document` for full context."));
         info
     }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let tcc = ToolCallContext::new(self, request, context);
+        self.tool_router.call(tcc).await
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        let about = self.collection_line("");
+        let tools = vec![
+            Tool::new(
+                "search",
+                format!(
+                    "Hybrid full-text + semantic search over the '{0}' collection ({1}). Returns the most relevant passages with document names. Use this first for any question about the collection content.",
+                    self.state.cfg.name, self.state.cfg.description
+                ),
+                schema_of::<SearchArgs>(),
+            ),
+            Tool::new(
+                "read_document",
+                format!(
+                    "Read a document from the '{0}' collection ({1}) verbatim by exact name from list_documents. Use after search to get complete context.",
+                    self.state.cfg.name, self.state.cfg.description
+                ),
+                schema_of::<ReadArgs>(),
+            ),
+            Tool::new(
+                "list_documents",
+                format!(
+                    "List all documents in the '{0}' collection ({1}) with sizes. Use to discover coverage before searching. {about}",
+                    self.state.cfg.name, self.state.cfg.description
+                ),
+                empty_schema(),
+            ),
+        ];
+        Ok(ListToolsResult::with_all_items(tools))
+    }
+}
+
+impl Rag {
+    fn collection_line(&self, suffix: &str) -> String {
+        format!("Collection '{}' ({}). {suffix}", self.state.cfg.name, self.state.cfg.description)
+    }
+}
+
+fn schema_of<T: schemars::JsonSchema>() -> std::sync::Arc<rmcp::model::JsonObject> {
+    let v = serde_json::to_value(schemars::schema_for!(T)).unwrap_or_default();
+    std::sync::Arc::new(v.as_object().cloned().unwrap_or_default())
+}
+
+fn empty_schema() -> std::sync::Arc<rmcp::model::JsonObject> {
+    std::sync::Arc::new(serde_json::json!({"type": "object"}).as_object().cloned().unwrap_or_default())
 }
